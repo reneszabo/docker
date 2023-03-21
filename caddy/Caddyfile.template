@@ -1,0 +1,18 @@
+{
+	debug
+	email email@domain.com
+	servers {
+	}
+}
+domain.com {
+	root * /path/to/root
+	try_files {path} /index.html
+	file_server
+}
+
+# PIHOLE by PROXY
+ip.addess, custom.domain.for.pihole {
+	tls internal
+	redir / /admin
+	reverse_proxy pihole:80
+}

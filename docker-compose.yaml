@@ -1,0 +1,108 @@
+version: '3'
+
+services:
+  caddy:
+    build:
+      context: caddy/
+      target: caddy
+    environment:
+      SERVER_NAME: ${SERVER_NAME:-localhost}, caddy:80
+      MERCURE_PUBLISHER_JWT_KEY: ${CADDY_MERCURE_JWT_SECRET:-!ChangeThisMercureHubJWTSecretKey!}
+      MERCURE_SUBSCRIBER_JWT_KEY: ${CADDY_MERCURE_JWT_SECRET:-!ChangeThisMercureHubJWTSecretKey!}
+    networks:
+      - external-net
+      - internal-net
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - $PWD/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - $PWD/caddy/site/main-entry:/srv/www/2023-03-01-entry
+      - caddy_data:/data
+      - caddy_config:/config
+  plex:
+    container_name: plex
+    image: plexinc/pms-docker:latest
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - PLEX_UID=${PUID}
+      - PLEX_GID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${PATH_MEDIA_PLEX}/config:/config
+      - ${PATH_MEDIA_PLEX}/data:/data
+      - ${PATH_MEDIA_PLEX}/transcode:/transcode
+    network_mode: "host"
+  transmission:
+    container_name: transmission
+    image: linuxserver/transmission:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - USER=${TRANSMISSION_USER}
+      - PASS=${TRANSMISSION_PASSWORD}
+    volumes:
+      - $PWD/transmission/config:/config
+      - ${PATH_MEDIA_TORRENT}:/downloads
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
+    networks:
+      - external-net
+  pihole:
+    container_name: pihole
+    dns:
+      - 127.0.0.1
+      - 8.8.8.8
+      - 8.8.4.4
+    image: pihole/pihole:latest
+    networks:
+      - internal-net
+    ports:
+      # Following are NOT proxied through Caddy, bound to host net instead:
+      - 53:53/udp
+      - 53:53/tcp
+      - 853:853/tcp # DNS-over-TLS
+    environment:
+      TZ: 'America/Toronto'
+      WEBPASSWORD: ${PIHOLE_PASSWORD}
+    volumes:
+      - $PWD/pihole/etc-pihole:/etc/pihole
+      - $PWD/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+    restart: unless-stopped
+  samba:
+    container_name: samba
+    image: dperson/samba:latest
+    restart: unless-stopped
+    command: '-u "${SAMBA_USER};${SAMBA_PASSWORD}" -s "filebot;/filebot;yes;no;no;tulip" -s "downloads;/downloads;yes;no;no;tulip"'
+    stdin_open: true
+    tty: true
+    environment:
+      - TZ=${TZ}
+      - USERID=${PUID}
+      - GROUPID=${PGID}
+    ports:
+      - 139:139
+      - 445:445
+    volumes:
+      - ${PATH_MEDIA_FILEBOT}:/filebot
+      - ${PATH_MEDIA_TORRENT}:/downloads
+    networks:
+      - external-net
+networks:
+  external-net:
+    external: true
+  internal-net:
+    external: false
+    driver: bridge
+volumes:
+  caddy_data:
+    external: true
+  caddy_config:
